@@ -175,14 +175,7 @@ headrick02.poly.coeff <- function(skewness, kurtosis, gam3, gam4, control = list
     stop(paste0("cannot find the coefficients of polynomial after ", control[["max.ntry"]], " attempts"))
   }
   
-  min.obj <- 1e20
-  idx <- -1
-  for(i in 1:length(OPT)){
-    #print(OPT[[i]]$objective)
-    if(OPT[[i]]$objective < min.obj){
-      min.obj <- OPT[[i]]$objective
-      idx <- i
-    }
+     }
   }
   if(control[["trace"]]){
     #cat("minimum objective: ", min.obj, "\n", sep="")
