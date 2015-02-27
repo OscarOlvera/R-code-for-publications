@@ -146,7 +146,7 @@ headrick02.poly.coeff <- function(skewness, kurtosis, gam3, gam4, control = list
   OPT <- list()
   ntry <- 0
   cnt <- 0
-  while(ntry < control[["max.ntry"]]){
+  while(ntry+1 < control[["max.ntry"]]){
     
     ntry <- ntry + 1
     start <- rnorm(6, sd = .5)
