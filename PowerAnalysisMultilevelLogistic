@@ -1,0 +1,96 @@
+library(simglm)
+library(lme4)
+library(paramtest)
+   
+mlm_test <- function(simNum, lv2, lv1) {
+    
+
+    data_str <- "cross"
+
+    fixed <- ~ 1 + x1 + x2 + x1:x2
+    fixed_param <- c(0, 0.3, 0.3, 0.3)
+    random <- ~ 1
+    random_param <- list(random_var = c(pi^2/27), rand_gen = 'rnorm', ther_sim=TRUE)
+
+    cov_param <- list(dist_fun = c('rchisq', 'rbinom'),
+                  var_type = c("level2", "level1"),
+                  opts = list(list(df=1),
+                         list(size=1, prob=0.5)))
+
+    
+    fixed1 <- ~ 1 + x1 + x2 + x1:x2
+    fixed_param1 <- c(0, 0.3, 0.3, 0.3)
+    random1 <- ~ 1+x1 
+
+   random_param1 <- list(random_var = c(pi^2/27, 0.3), rand_gen = 'rnorm', ther_sim=TRUE)
+
+    cov_param1 <- list(dist_fun = c('rchisq', 'rbinom'),
+                  var_type = c("level2", "level1"),
+                  opts = list(list(df=1),
+                         list(size=1, prob=0.5)))
+
+
+    dat11<-simglm::sim_glm(fixed = fixed, fixed_param = fixed_param, random = random,
+        	random_param = random_param, cov_param = cov_param, k = NULL, n = lv2, p = lv1,
+        	data_str = data_str, outcome_type = 'logistic')
+
+   
+        	
+    dat22<-simglm::sim_glm(fixed = fixed1, fixed_param = fixed_param1, random = random1,
+        	random_param = random_param1, cov_param = cov_param1, k = NULL, n = lv2, p = lv1,
+        	data_str = data_str, outcome_type = 'logistic')
+
+     
+	      datz1 <- dat11[,-c(1,5:9,11)]
+            datz2 <- dat22[,-c(1,5:10,12)]
+
+
+		colnames(datz1) <- c("x1", "x2", "x1x2", "y","id")
+            colnames(datz2) <- c("x1", "x2", "x1x2", "y","id")
+            
+     return <- tryCatch({
+    
+    
+    mod0 <-   glm(y ~ 1 +x1 + x2 + x1x2, data=datz1, family="binomial")
+  
+   
+    mod1 <- lme4::glmer(y ~ 1 +x1 + x2 + x1x2 + (1|id), data=datz1, family="binomial")
+
+    mod1.5 <- lme4::glmer(y ~ 1 +x1 + x2 + x1x2 + (1|id), data=datz2, family="binomial")
+    mod2 <-   lme4::glmer(y ~ 1 +x1 + x2 + x1x2 + (1|id) + (0+x1|id), data=datz2, family="binomial")
+   
+
+        p1 <- coef(summary(mod2))[2,4]
+        p2 <- coef(summary(mod2))[3,4]
+        p3 <- coef(summary(mod2))[4,4]
+
+        test1<-as.numeric(2*(logLik(mod1)-logLik(mod0)))
+
+        test2<-as.numeric(2*(logLik(mod2)-logLik(mod1.5)))
+        
+
+        sig1 <- p1 <.05
+        sig2 <- p2 <.05
+        sig3 <- p3 <.05
+
+        sig4 <- pchisq(test1,1,lower=FALSE)<.05
+        sig5 <- pchisq(test2,1,lower=FALSE)<.05
+
+        return(c(sig1, sig2, sig3, sig4, sig5))
+    },
+    error=function(e) {
+
+        return(c(sig1=NA, sig2=NA, sig3=NA, sig4=NA, sig5=NA))
+    })
+
+    return(return)
+}
+
+
+power_mlm <- grid_search(mlm_test, params=list(lv1=30, lv2=30), n.iter=100, output='data.frame', parallel="snow", ncpus=8)
+
+a1<-data.frame(results(power_mlm) %>%group_by(lv1.test,lv2.test)%>% summarise(power=mean(X1, na.rm=TRUE),na=sum(is.na(X1))))
+a2<-data.frame(results(power_mlm) %>%group_by(lv1.test,lv2.test)%>% summarise(power=mean(X2, na.rm=TRUE),na=sum(is.na(X2))))
+a3<-data.frame(results(power_mlm) %>%group_by(lv1.test,lv2.test)%>% summarise(power=mean(X3, na.rm=TRUE),na=sum(is.na(X3))))
+a4<-data.frame(results(power_mlm) %>%group_by(lv1.test,lv2.test)%>% summarise(power=mean(X4, na.rm=TRUE),na=sum(is.na(X4))))
+a5<-data.frame(results(power_mlm) %>%group_by(lv1.test,lv2.test)%>% summarise(power=mean(X5, na.rm=TRUE),na=sum(is.na(X5))))
