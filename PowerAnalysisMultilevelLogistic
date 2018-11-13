@@ -114,3 +114,106 @@ p1<-ggplot(data=xx,aes(x=lv1, y=pw, group=typ)) + geom_line(aes(colour=typ), siz
                             labels=c("Continuous", "Categorical", "Interaction", "RandomIntercept","RandomSlope"))
                             
 p1 + facet_grid(. ~ lv2) + geom_hline(aes(yintercept=0.8))
+
+##########################################################################################################################################
+##########################################################################################################################################
+##########################################################################################################################################
+##########################################################################################################################################
+##########################################################################################################################################
+
+### Run this section is an unbalanced design is needed instead:
+
+library(simglm)
+library(lme4)
+library(paramtest)
+
+
+### STEP1: DECLARE THE FOLLOWING FUNCTION WITH THE CUSTOMIZED ENTRIES
+
+mlm_test <- function(simNum, lv2, lv1) {
+    
+
+    data_str <- "cross"
+
+    fixed <- ~ 1 + x1 + x2 + x1:x2  ##model is specified in this step
+    fixed_param <- c(0, 0.3, 0.3, 0.3) ## population-level fixed effects (i.e. regression coefficients)
+    random <- ~ 1 ## which element of the model is random
+    random_param <- list(random_var = c(pi^2/27), rand_gen = 'rnorm', ther_sim=TRUE) ##the variance of the random effect
+
+    cov_param <- list(dist_fun = c('rchisq', 'rbinom'), ### distribution of the covariates
+                  var_type = c("level2", "level1"), ## which covaraite is Level 1 and which is Level 2. Must match the order
+                  opts = list(list(df=1),           ## in which they were declared just 1 line above.
+                         list(size=1, prob=0.5)))   ## suitable parameters for the distributions. In this case, degrees of freedom 
+			                            ##(df) for the chi-square and size and probability for the binomial.  
+
+    
+    fixed1 <- ~ 1 + x1 + x2 + x1:x2 ### must look exactly as above. The only diffrence is the random effects part. 
+    fixed_param1 <- c(0, 0.3, 0.3, 0.3)
+    random1 <- ~ 1+x1 
+
+   random_param1 <- list(random_var = c(pi^2/27, 0.3), rand_gen = 'rnorm', ther_sim=TRUE)
+
+    cov_param1 <- list(dist_fun = c('rchisq', 'rbinom'),
+                  var_type = c("level2", "level1"),
+                  opts = list(list(df=1),
+                         list(size=1, prob=0.5)))
+
+    ## simulates 1st data set (needed for the likelihood ratio test of random effects)
+    dat11<-simglm::sim_glm(fixed = fixed, fixed_param = fixed_param, random = random,
+        	random_param = random_param, cov_param = cov_param, k = NULL, n = lv2, p = NULL,
+        	data_str = data_str, outcome_type = 'logistic', unbal = list(level2 = TRUE), unbal_design =lv1)
+
+   
+     ## simulates 2nd data set (needed for the likelihood ratio test of random effects)     	
+    dat22<-simglm::sim_glm(fixed = fixed1, fixed_param = fixed_param1, random = random1,
+        	random_param = random_param1, cov_param = cov_param1, k = NULL, n = lv2, p = NULL,
+        	data_str = data_str, outcome_type = 'logistic', unbal = list(level2 = TRUE), unbal_design =lv1)
+
+     
+	      datz1 <- dat11[,-c(1,5:9,11)]  ##optional step. extracts the only relevant output from simglm(). Needs to be changed
+            datz2 <- dat22[,-c(1,5:10,12)] ##manually if the model changes so the right columns are extracted
+
+
+		colnames(datz1) <- c("x1", "x2", "x1x2", "y","id") ##optional step. re-names the columns
+                colnames(datz2) <- c("x1", "x2", "x1x2", "y","id")
+            
+     return <- tryCatch({
+    
+    ### all the (nested) models are fitted to make sure the likelihood-ratio tests are possible
+    mod0 <-   glm(y ~ 1 +x1 + x2 + x1x2, data=datz1, family="binomial")
+  
+   
+    mod1 <- lme4::glmer(y ~ 1 +x1 + x2 + x1x2 + (1|id), data=datz1, family="binomial")
+
+    mod1.5 <- lme4::glmer(y ~ 1 +x1 + x2 + x1x2 + (1|id), data=datz2, family="binomial")
+    mod2 <-   lme4::glmer(y ~ 1 +x1 + x2 + x1x2 + (1|id) + (0+x1|id), data=datz2, family="binomial")
+   
+
+        p1 <- coef(summary(mod2))[2,4]
+        p2 <- coef(summary(mod2))[3,4]
+        p3 <- coef(summary(mod2))[4,4]
+
+        test1<-as.numeric(2*(logLik(mod1)-logLik(mod0))) ##likelihood ratio tests
+
+        test2<-as.numeric(2*(logLik(mod2)-logLik(mod1.5)))
+        
+
+        sig1 <- p1 <.05
+        sig2 <- p2 <.05
+        sig3 <- p3 <.05
+
+        sig4 <- pchisq(test1,1,lower=FALSE)<.05
+        sig5 <- pchisq(test2,1,lower=FALSE)<.05
+
+        return(c(sig1, sig2, sig3, sig4, sig5))
+    },
+    error=function(e) {
+
+        return(c(sig1=NA, sig2=NA, sig3=NA, sig4=NA, sig5=NA))
+    })
+
+    return(return)
+}
+
+                                                                    ###alter these limits for unbalanced groups###
+power_mlm <- grid_search(mlm_test, params=list(lv1=list(level2 = list(min = 10, max = 100)), lv2=seq(from=50, to=100, by=50)), n.iter=1000, output='data.frame', parallel="snow", ncpus=8
