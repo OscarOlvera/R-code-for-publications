@@ -215,5 +215,5 @@ mlm_test <- function(simNum, lv2, lv1) {
     return(return)
 }
 
-                                                                    ###alter these limits for unbalanced groups###
-power_mlm <- grid_search(mlm_test, params=list(lv1=list(level2 = list(min = 10, max = 100)), lv2=seq(from=50, to=100, by=50)), n.iter=1000, output='data.frame', parallel="snow", ncpus=8
+                                                        ###alter these limits for unbalanced groups###
+power_mlm <- grid_search(mlm_test, params=list(lv1=list(level2 = list(min = 10, max = 100)), lv2=seq(from=10, to=100, by=20)), n.iter=1000, output='data.frame', parallel="snow", ncpus=8
