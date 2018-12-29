@@ -1,0 +1,402 @@
+#### STEP 0: RUN THIS SIMULATION FIRST TO
+#### GET AN EMPIRICAL ESTIMATE OF SIGMA
+
+library(ggplot2)
+library(lme4)
+library(MASS)
+library(estimatr)
+library(hcci)
+
+reps<-1000
+mat1<- matrix(NA, nrow=reps, ncol=4)
+s1 <- double(reps)
+
+b0 <- 0.5
+b1 <- 0.5
+n <- 1000
+
+X1 <- rnorm(n,0,1)
+
+for (i in 1:reps) {
+
+Y <- b0 + b1*X1 + rnorm(n, 0 , exp(X1))
+#Y <- b0 + b1*X1 + rnorm(n,0 , mean(s1)) ###uncomment for top panel, Fig 2
+
+model <- lm(Y ~ X1)
+s1[i] <- summary(model)$sigma
+vcv <- vcov(model)
+
+mat1[i,1] <- model$coef[1]
+mat1[i,2] <- model$coef[2]
+mat1[i,3] <- sqrt(diag(vcv)[1])
+mat1[i,4] <- sqrt(diag(vcv)[2])
+}
+
+###########################################
+###########################################
+### FIGURE 1
+
+set.seed(123)
+
+CiSim2<-function(n,alpha,m,...){
+  #n - sample size
+  #alpha - alpha level for confidence regions
+  #m - number of intervals to simulate
+  #... - additional arguements passed to plot, such as xlim, ylim, etc...
+  low <-1:m
+  high <- 1:m
+  captured <- rep(TRUE,m)
+  c1 <- qt(1-alpha/2, df=n-2)/sqrt(n)
+  
+  for(j in 1:m){
+    #Y <- b0 + b1*X1 + rnorm(n, 0 , mean(s1)) ###uncomment for top panel, Fig 1
+    #Y <- b0 + b1*X1 + rnorm(n, 0 , exp(X1))  ###uncomment for bottom panel, Fig1
+    model <- lm(Y ~ X1)
+
+    captured[j] <- confint(model, 'X1', level=0.95)[1,1]<b1 & b1<confint(model, 'X1', level=0.95)[1,2]
+    low[j] <- confint(model, 'X1', level=0.95)[1,1]
+    high[j] <- confint(model, 'X1', level=0.95)[1,2]
+  }
+  
+  plot(c(low,high),type="n",xlim=c(1,100),xlab="Confidence Interval",ylab="Regression Coefficient",pch=19,...)
+  abline(h = 0.5, lty = 1,lwd=3)
+  points(high, col = 1, pch = 20)
+  points(low, col = 1, pch = 20)
+  
+  cols <- c("red", "black")
+  for(i in 1:100){
+    lines(c(i,i), c(low[i],high[i]), lty = captured[i]+1, col = cols[captured[i]+1], pch = 19)
+  }
+  title("Heteroskedastic 95% confidence intervals, N=1000")
+  xlab="Confidence Interval"
+}
+
+b0 <- 0.5
+b1 <- 0.0
+n <- 1000
+X1 <- rnorm(n,0,1)
+
+
+CiSim2(1000, .05, 100)
+
+#####################################################################
+
+###########################################
+###########################################
+### FIGURE 2
+
+dd <- data.frame(mat1[,2])
+colnames(dd)<-c("reg")
+
+dt2 <- function(x, mu, nu, df, ncp) {
+  dt((x-mu)/nu,df,ncp)/nu
+}
+
+
+p1<-ggplot(dd, aes(reg)) + geom_density(fill="blue", size=0.75, alpha=0.05)
+p2<-p1 + stat_function(fun = dt2, args=list(mu=mean(dd$reg), nu=sd(dd$reg), df=998, ncp=0), 
+              aes(colour = 'Student t'), lwd=1.5, linetype="dashed")+
+    geom_vline(aes(xintercept=0.5),linetype="dotdash", lwd=1)
+
+p2+ ggtitle("Empirical sampling distribution of regression coefficients under heteroskedasticity") +xlab("Estimated regression coefficient")+ ylab("Density") + theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+ theme(legend.position="none")
+
+#####################################################################
+
+###########################################
+###########################################
+### FIGURE 3
+
+set.seed(123)
+
+b0 <- 0.5
+b1 <- 0.5
+n <- 1000
+X1 <- rnorm(n,0,1)
+
+
+###Y <- b0 + b1*X1 + rnorm(n, 0 , mean(s1)) ###uncomment for top panel, Fig 3
+###Y <- b0 + b1*X1 + rnorm(n, 0 , exp(X1))  ###uncomment for bottom panel, Fig 3
+
+model <- lm(Y ~ X1)
+
+
+yhat <- predict(model)
+rez <- resid(model)
+dd <- data.frame(yhat, rez)
+
+p1<-ggplot(dd, aes(x=yhat, y=rez)) + geom_point(size=2, alpha=0.5)
+
+p2<-p1 + geom_hline(aes(yintercept=0),linetype="dotdash", lwd=1)
+
+p2+ ggtitle("Model residuals by fitted values under homoskedasticity")+xlab("Fitted values")+ ylab("Residuals") + theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+ theme(legend.position="none")+theme(plot.title = element_text(hjust = 0.5)) 
+
+#####################################################################
+
+###########################################
+###########################################
+### FIGURE 4
+
+Simulate <- function(k, n, icc, beta, sigma=NA, sigmaXre=NA){
+
+nk <- n*k
+nx <- length(beta)-1
+Z <- kronecker(diag(k), rep(1,n))
+
+# X matrix
+if (is.na(sigma[1])) sigma <- diag(nx)
+X <- mvrnorm(nk, rep(0,nx), sigma)
+
+# random effects of X
+if (!is.na(sigmaXre[1])){
+Xre <- t(matrix(rnorm(k*nx,rep(1,nx),sigmaXre),nrow=nx))
+Xre <- cbind(rep(1,nk), X * (Z %*% Xre))
+} else {
+Xre <- cbind(rep(1,nk), X)
+}
+X <- cbind(rep(1,nk), X)
+
+# create a factor to keep track of which "students" are in which "school"
+group <- as.factor(rep(1:k, each=n))
+
+# generate taus and epsilons
+tecov <- diag(c(icc, rep(1-icc,n)))
+te <- mvrnorm(k, rep(0,n+1), tecov)
+epsilons <- as.vector(t(te[,-1]))
+taus <- te[,1]
+
+# generate Y data
+ran <- Z %*% taus + epsilons
+Y <- Xre %*% beta + ran
+
+output <- list(Y, X[,2], group)
+class(output) <- "data.frame"
+colnames(output) <- c("Y", "X1", "group")
+return(output)
+}
+
+
+# How many Level 2 units?
+k <- 30
+# How many Level 1 units per Level 2 units?
+n <- 30
+# Which ICC?
+real.icc <- 0.7
+# Which fixed effects?
+beta <- c(0.5,0.5)
+# Covariance matrices of the X variables (a positive-definite symmetric matrix)
+sigma <- matrix(c(1), length(beta)-1)
+# Covariance matrix of the random effects of X (or vector of variances where zero means no random effect)
+sigmaXre <- matrix(c(rep(0,1)), length(beta)-1) #intercept-only model
+
+data1 <- Simulate(k, n, real.icc, beta, sigma, sigmaXre)
+
+Y  <-c(data1$Y)
+X1 <-c(data1$X1)
+
+model <- lm(Y~ X1)
+
+yhat <- predict(model)
+rez <- resid(model)
+dd <- data.frame(yhat, rez)
+
+p1<-ggplot(dd, aes(x=yhat, y=rez)) + geom_point(size=2, alpha=0.5)
+
+p2<-p1 + geom_hline(aes(yintercept=0),linetype="dotdash", lwd=1)
+
+p2+ ggtitle("Model residuals by fitted values for a 2-level, random intercept model")+xlab("Fitted values")+ ylab("Residuals") + theme_bw() + theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+ theme(legend.position="none")+theme(plot.title = element_text(hjust = 0.5)) 
+
+#####################################################################
+
+###########################################
+###########################################
+### FIGURE 5 TOP PANEL
+
+library(estimatr)
+set.seed(125)
+
+CiSim2<-function(n,alpha,m,...){
+  #n - sample size
+  #alpha - alpha level for confidence regions
+  #m - number of intervals to simulate
+  #... - additional arguements passed to plot, such as xlim, ylim, etc...
+  low <-1:m
+  high <- 1:m
+  captured <- rep(TRUE,m)
+  c1 <- qt(1-alpha/2, df=n-2)/sqrt(n)
+  
+  for(j in 1:m){
+    Y <- b0 + b1*X1 + rnorm(n, 0 , exp(X1))
+    model <- lm_robust(Y ~ X1,se_type="HC0")
+
+    captured[j] <- as.numeric(model$conf.low[2])<b1 & b1<as.numeric(model$conf.high[2])
+    low[j] <- as.numeric(model$conf.low[2])
+    high[j] <- as.numeric(model$conf.high[2])
+  }
+  
+  plot(c(low,high),type="n",xlim=c(1,100),xlab="Confidence Interval",ylab="Regression Coefficient",pch=19,...)
+  abline(h = 0.5, lty = 1,lwd=3)
+  points(high, col = 1, pch = 20)
+  points(low, col = 1, pch = 20)
+  
+  cols <- c("magenta1", "black")
+  for(i in 1:100){
+    lines(c(i,i), c(low[i],high[i]), lty = captured[i]+1, col = cols[captured[i]+1], pch = 19)
+  }
+  title(~"Robust 95% confidence intervals for " *underline(classic)~"heteroskedasticity")
+  xlab="Confidence Interval"
+}
+
+
+b0 <- 0.5
+b1 <- 0.5
+n <- 1000
+X1 <- rnorm(n,0,1)
+
+CiSim2(1000, .05, 100)
+
+
+### FIGURE 5 BOTTOM PANEL #######
+
+n<-30
+k<-30
+icc <- 0.7
+b1 <- 0.5
+
+
+CiSim2<-function(p,alpha,m,...){
+  #p - sample size
+  #alpha - alpha level for confidence regions
+  #m - number of intervals to simulate
+  #... - additional arguements passed to plot, such as xlim, ylim, etc...
+  low <-1:m
+  high <- 1:m
+  captured <- rep(TRUE,m)
+  c1 <- qt(1-alpha/2, df=p-2)/sqrt(p)
+  
+  for(j in 1:m){
+# How many Level 2 units?
+k <- 30
+# How many Level 1 units per Level 2 units?
+n <- 30
+# Which ICC?
+real.icc <- 0.7
+# Which fixed effects?
+beta <- c(0.5,0.5)
+# Covariance matrices of the X variables (a positive-definite symmetric matrix)
+sigma <- matrix(c(1), length(beta)-1)
+# Covariance matrix of the random effects of X (or vector of variances where zero means no random effect)
+sigmaXre <- matrix(c(rep(0,1)), length(beta)-1) #intercept-only model
+
+
+nk <- n*k
+nx <- length(beta)-1
+Z <- kronecker(diag(k), rep(1,n))
+
+# X matrix
+if (is.na(sigma[1])) sigma <- diag(nx)
+X <- mvrnorm(nk, rep(0,nx), sigma)
+
+# random effects of X
+if (!is.na(sigmaXre[1])){
+Xre <- t(matrix(rnorm(k*nx,rep(1,nx),sigmaXre),nrow=nx))
+Xre <- cbind(rep(1,nk), X * (Z %*% Xre))
+} else {
+Xre <- cbind(rep(1,nk), X)
+}
+X <- cbind(rep(1,nk), X)
+
+# create a factor to keep track of which "students" are in which "school"
+group <- as.factor(rep(1:k, each=n))
+
+# generate taus and epsilons
+tecov <- diag(c(icc, rep(1-icc,n)))
+te <- mvrnorm(k, rep(0,n+1), tecov)
+epsilons <- as.vector(t(te[,-1]))
+taus <- te[,1]
+
+# generate Y data
+ran <- Z %*% taus + epsilons
+Y <- Xre %*% beta + ran
+
+output <- list(Y, X[,2], group)
+class(output) <- "data.frame"
+colnames(output) <- c("Y", "X1", "group")
+data1<-output
+
+Y  <-c(data1$Y)
+X1 <-c(data1$X1)
+
+
+    model <- lm_robust(Y ~ X1,se_type="HC0")
+
+    captured[j] <- as.numeric(model$conf.low[2])<b1 & b1<as.numeric(model$conf.high[2])
+    low[j] <- as.numeric(model$conf.low[2])
+    high[j] <- as.numeric(model$conf.high[2])
+  }
+  
+  plot(c(low,high),type="n",xlim=c(1,100),xlab="Confidence Interval",ylab="Regression Coefficient",pch=19,...)
+  abline(h = 0.5, lty = 1,lwd=3)
+  points(high, col = 1, pch = 20)
+  points(low, col = 1, pch = 20)
+  
+  cols <- c("magenta1", "black")
+  for(i in 1:100){
+    lines(c(i,i), c(low[i],high[i]), lty = captured[i]+1, col = cols[captured[i]+1], pch = 19)
+  }
+  title(~"Robust 95% confidence intervals for "*underline(clustered) ~"heteroskedasticity")
+  xlab="Confidence Interval"
+}
+
+CiSim2(n*k, .05, 100)
+
+#####################################################################
+
+###########################################
+###########################################
+### FIGURE 6
+
+set.seed(125)
+
+CiSim2<-function(n,alpha,m,...){
+  #n - sample size
+  #alpha - alpha level for confidence regions
+  #m - number of intervals to simulate
+  #... - additional arguements passed to plot, such as xlim, ylim, etc...
+  low <-1:m
+  high <- 1:m
+  captured <- rep(TRUE,m)
+  c1 <- qt(1-alpha/2, df=n-2)/sqrt(n)
+  
+  for(j in 1:m){
+    Y <- b0 + b1*X1 + rnorm(n, 0 , exp(X1))
+    model <- lm(Y ~ X1)
+    bootz<-Pboot(model=model, significance = 0.05,J=1000, K = 100, distribution = "rademacher")
+
+    captured[j] <- bootz$ci_lower_simple[1]<b1 & b1<bootz$ci_upper_simple[1]
+    low[j] <- bootz$ci_lower_simple[1]
+    high[j]<- bootz$ci_upper_simple[1]
+  }
+  
+  plot(c(low,high),type="n",xlim=c(1,100),xlab="Confidence Interval",ylab="Regression Coefficient",pch=19,...)
+  abline(h = 0.5, lty = 1,lwd=3)
+  points(high, col = 1, pch = 20)
+  points(low, col = 1, pch = 20)
+  
+  cols <- c("magenta1", "black")
+  for(i in 1:100){
+    lines(c(i,i), c(low[i],high[i]), lty = captured[i]+1, col = cols[captured[i]+1], pch = 19)
+  }
+  title(~"Wild-bootstrapped 95% confidence intervals for " *underline(classic)~"heteroskedasticity")
+  xlab="Confidence Interval"
+}
+
+
+b0 <- 0.5
+b1 <- 0.5
+n <- 1000
+X1 <- rnorm(n,0,1)
+
+CiSim2(1000, .05, 100)
