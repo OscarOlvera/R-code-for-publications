@@ -1,0 +1,84 @@
+cronbachmax <- function(dataset){
+  
+  # get the number of questions
+  Q = length(dataset)
+  
+  # get the number of categories
+  categs <- c()
+  for(q in 1:Q){
+    categs[q] <- max(dataset[,q]) + 1
+  }
+  # get the priors for each category
+  priors <- list()
+  for(q in 1:Q){
+    priors[[q]] <- table(dataset[,q])/length(dataset[,q])
+  }
+  
+  # set up counters:
+  rhoxymax <- matrix(NA,Q,Q)
+
+  # work with pairwise correlations
+  for(ql in 1:Q){
+    for(qr in ql:Q){
+      # check for non-repetition of correlations
+      if(ql<qr){
+        # get dimensions
+        k <- categs[ql]
+        m <- categs[qr]
+
+        
+        # get priors
+        p <- priors[[ql]] 
+        q <- priors[[qr]]
+
+        Ex  <- 0
+        Ey  <- 0
+        Ex2 <- 0
+        Ey2 <- 0
+        
+
+        for(i in 0:(k-1)){
+          Ex <- Ex + i * p[i+1]
+          Ex2 <- Ex2 + i^2 * p[i+1]
+        }
+        
+        for(j in 0:(m-1)){
+          Ey <- Ey + j * q[j+1]
+          Ey2 <- Ey2 + j^2 * q[j+1]
+        }
+        
+        
+        varx <- Ex2 - Ex^2
+        vary <- Ey2 - Ey^2
+
+        Exymax_1 <- 0
+        for(i in 0:(k-1)){
+          Exymax_1 <- Exymax_1 + i*(i+1)*p[i+1]/2
+        }
+        for(j in 0:(m-1)){
+          Exymax_1 <- Exymax_1 + j*(j-1)*q[j+1]/2
+        }
+        
+        Exymax_2 <- 0
+        for(i in 0:(k-1)){
+          Exymax_2 <- Exymax_2 + i*(i-1)*p[i+1]/2
+        }
+        for(j in 0:(m-1)){
+          Exymax_2 <- Exymax_2 + j*(j+1)*q[j+1]/2
+        }
+        
+        Exymax <- min(Exymax_1, Exymax_2)
+        rhoxymax[ql,qr] <- min((Exymax - Ex*Ey)/sqrt(varx*vary),1)
+      }
+    }
+  }
+  
+  rhat <- mean(rhoxymax, na.rm = TRUE)
+  alphamax <- Q * rhat / (1 + (Q-1)*rhat)
+  
+  results <- list()
+  results$priors <- priors
+  results$corlim <- rhoxymax
+  results$alphalim <- alphamax
+  return(results)
+}
