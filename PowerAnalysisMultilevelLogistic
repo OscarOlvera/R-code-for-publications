@@ -91,7 +91,7 @@ mlm_test <- function(simNum, lv2, lv1) {
 }
 
                                      ######### creates list of sample sizes at Level 1 and Level2 #########      
-power_mlm <- grid_search(mlm_test, params=list(lv1=seq(from=10, to=100, by=1), lv2=seq(from=10, to=110, by=20)), n.iter=1000, output='data.frame', parallel="snow", ncpus=8)
+power_mlm <- grid_search(mlm_test, params=list(lv1=seq(from=10, to=100, by=1), lv2=seq(from=10, to=110, by=20)), n.iter=10000, output='data.frame', parallel="snow", ncpus=8)
 
 a1<-data.frame(results(power_mlm) %>%group_by(lv1.test,lv2.test)%>% summarise(power=mean(X1, na.rm=TRUE),na=sum(is.na(X1))))
 a2<-data.frame(results(power_mlm) %>%group_by(lv1.test,lv2.test)%>% summarise(power=mean(X2, na.rm=TRUE),na=sum(is.na(X2))))
