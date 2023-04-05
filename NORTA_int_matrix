@@ -1,0 +1,47 @@
+RM <- function(C0,Cx,MM,SS,list_dist,a,iter,tol,n,alph){
+
+CorrChol <- function(Cz,Cx,method){
+V<-eigen(Cz)
+if(any(V$values<0)){
+C <- sdpt3r::nearcorr(Cz)
+Cz <- C$X[[1]]}
+return(Cz)
+}
+GN <- function(CovZ,Cx,MM,SS,list_dist,n,method){
+m <- dim(CovZ)[1]
+CovZ<-CorrChol(CovZ,Cx,method)
+CholZ <- chol(CovZ)
+W <- MASS::mvrnorm(n, rep(0,m), diag(m))
+Z <- W%*%CholZ
+U <- pnorm(as.matrix(Z))
+X1<-sapply(1:m, FUN = function(i) list_dist[[i]](U[,i]))
+Corr<-((t(X1)%*%X1)/n - MM)/SS
+diag(Corr)<-1
+return(Corr)
+}
+Cm <-C0
+Ca <- C0
+err <- 1:(iter+1)
+er<-GN(C0,Cx,MM,SS,list_dist,n)- Cx
+err[1] <- norm(er,'F')
+e <- err[1]
+for(i in 1:iter){
+C1<-C0-(a*i^(-alph))*er
+Cm<-Cm+C1
+Cb<-Cm/(i+1)
+er<-GN(Cb,Cx,MM,SS,list_dist,n)-Cx
+err[i+1]<-norm(er,'F')
+if(err[i+1]<e){
+Ca <- Cb 
+e <- err[i+1]}
+if(norm(er,'F')<tol){
+print('Convergence was reached')
+print('Number of iterations:')
+print(i)
+err <- err[1:i+1]
+Cb=CorrChol(Cb,Cx)
+return(list(Cb,err))}
+C0<-C1}
+print('All iterations was reached')
+Ca<-CorrChol(Ca,Cx)
+return(list(Ca,err))}
